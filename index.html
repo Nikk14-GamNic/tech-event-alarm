@@ -1,0 +1,281 @@
+import React, { useState, useEffect } from 'react';
+import { Bell, Plus, Trash2, Calendar, Clock } from 'lucide-react';
+
+export default function TechEventReminder() {
+  const [events, setEvents] = useState([]);
+  const [showForm, setShowForm] = useState(false);
+  const [formData, setFormData] = useState({
+    name: '',
+    date: '',
+    time: '09:00'
+  });
+  const [notificationPermission, setNotificationPermission] = useState('default');
+
+  // Load events from storage on mount
+  useEffect(() => {
+    loadEvents();
+    checkNotificationPermission();
+  }, []);
+
+  const loadEvents = async () => {
+    try {
+      const result = await window.storage.get('tech-events');
+      if (result) {
+        setEvents(JSON.parse(result.value));
+      }
+    } catch (error) {
+      console.log('No events found yet');
+    }
+  };
+
+  const saveEvents = async (updatedEvents) => {
+    try {
+      await window.storage.set('tech-events', JSON.stringify(updatedEvents));
+      setEvents(updatedEvents);
+    } catch (error) {
+      console.error('Error saving events:', error);
+    }
+  };
+
+  const checkNotificationPermission = () => {
+    if ('Notification' in window) {
+      setNotificationPermission(Notification.permission);
+    }
+  };
+
+  const requestNotificationPermission = async () => {
+    if ('Notification' in window) {
+      const permission = await Notification.requestPermission();
+      setNotificationPermission(permission);
+      return permission === 'granted';
+    }
+    return false;
+  };
+
+  const scheduleNotifications = (event) => {
+    if (notificationPermission !== 'granted') return;
+
+    const eventDateTime = new Date(`${event.date}T${event.time}`);
+    const now = new Date();
+
+    // Calculate notification times
+    const oneWeekBefore = new Date(eventDateTime.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const twoDaysBefore = new Date(eventDateTime.getTime() - 2 * 24 * 60 * 60 * 1000);
+    const oneHourBefore = new Date(eventDateTime.getTime() - 60 * 60 * 1000);
+
+    const scheduleNotification = (time, message) => {
+      const delay = time.getTime() - now.getTime();
+      if (delay > 0) {
+        setTimeout(() => {
+          new Notification('Tech Event Reminder', {
+            body: message,
+            icon: '🔔',
+            badge: '🔔'
+          });
+        }, delay);
+      }
+    };
+
+    scheduleNotification(oneWeekBefore, `${event.name} is in 1 week!`);
+    scheduleNotification(twoDaysBefore, `${event.name} is in 2 days!`);
+    scheduleNotification(oneHourBefore, `${event.name} starts in 1 hour!`);
+  };
+
+  const addEvent = async () => {
+    if (!formData.name || !formData.date) return;
+
+    if (notificationPermission !== 'granted') {
+      const granted = await requestNotificationPermission();
+      if (!granted) {
+        alert('Please enable notifications to receive reminders!');
+        return;
+      }
+    }
+
+    const newEvent = {
+      id: Date.now(),
+      ...formData
+    };
+
+    const updatedEvents = [...events, newEvent];
+    await saveEvents(updatedEvents);
+    scheduleNotifications(newEvent);
+
+    setFormData({ name: '', date: '', time: '09:00' });
+    setShowForm(false);
+  };
+
+  const deleteEvent = async (id) => {
+    const updatedEvents = events.filter(e => e.id !== id);
+    await saveEvents(updatedEvents);
+  };
+
+  const formatDate = (dateStr) => {
+    const date = new Date(dateStr);
+    return date.toLocaleDateString('en-US', { 
+      weekday: 'short', 
+      year: 'numeric', 
+      month: 'short', 
+      day: 'numeric' 
+    });
+  };
+
+  const getDaysUntil = (dateStr, timeStr) => {
+    const eventDate = new Date(`${dateStr}T${timeStr}`);
+    const now = new Date();
+    const diff = eventDate - now;
+    const days = Math.ceil(diff / (1000 * 60 * 60 * 24));
+    
+    if (days < 0) return 'Past event';
+    if (days === 0) return 'Today!';
+    if (days === 1) return 'Tomorrow';
+    return `${days} days`;
+  };
+
+  // Suggested major tech events
+  const suggestedEvents = [
+    { name: 'Samsung Galaxy Unpacked', date: '2026-01-15' },
+    { name: 'Apple WWDC', date: '2025-06-10' },
+    { name: 'Google I/O', date: '2025-05-14' },
+    { name: 'CES Las Vegas', date: '2026-01-07' },
+    { name: 'Apple iPhone Event', date: '2025-09-10' },
+    { name: 'Microsoft Build', date: '2025-05-20' }
+  ];
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
+      <div className="max-w-2xl mx-auto">
+        <div className="bg-white rounded-2xl shadow-xl p-6 mb-4">
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center gap-3">
+              <Bell className="w-8 h-8 text-indigo-600" />
+              <h1 className="text-2xl font-bold text-gray-800">Tech Event Reminders</h1>
+            </div>
+            <button
+              onClick={() => setShowForm(!showForm)}
+              className="bg-indigo-600 text-white p-2 rounded-lg hover:bg-indigo-700 transition"
+            >
+              <Plus className="w-6 h-6" />
+            </button>
+          </div>
+
+          {notificationPermission !== 'granted' && (
+            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-4">
+              <p className="text-sm text-yellow-800 mb-2">
+                📢 Notifications are disabled. Enable them to receive reminders!
+              </p>
+              <button
+                onClick={requestNotificationPermission}
+                className="bg-yellow-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-yellow-700"
+              >
+                Enable Notifications
+              </button>
+            </div>
+          )}
+
+          {showForm && (
+            <div className="bg-gray-50 rounded-lg p-4 mb-4">
+              <h3 className="font-semibold mb-3 text-gray-700">Add New Event</h3>
+              <input
+                type="text"
+                placeholder="Event name (e.g., Samsung Galaxy Unpacked)"
+                value={formData.name}
+                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                className="w-full p-3 border border-gray-300 rounded-lg mb-3 focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+              />
+              <div className="flex gap-2 mb-3">
+                <input
+                  type="date"
+                  value={formData.date}
+                  onChange={(e) => setFormData({ ...formData, date: e.target.value })}
+                  className="flex-1 p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                />
+                <input
+                  type="time"
+                  value={formData.time}
+                  onChange={(e) => setFormData({ ...formData, time: e.target.value })}
+                  className="w-32 p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                />
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={addEvent}
+                  className="flex-1 bg-indigo-600 text-white py-2 rounded-lg hover:bg-indigo-700 transition font-medium"
+                >
+                  Add Event
+                </button>
+                <button
+                  onClick={() => setShowForm(false)}
+                  className="px-4 bg-gray-200 text-gray-700 py-2 rounded-lg hover:bg-gray-300 transition"
+                >
+                  Cancel
+                </button>
+              </div>
+
+              <div className="mt-4 pt-4 border-t border-gray-200">
+                <p className="text-sm text-gray-600 mb-2">Quick add suggestions:</p>
+                <div className="flex flex-wrap gap-2">
+                  {suggestedEvents.map((event, idx) => (
+                    <button
+                      key={idx}
+                      onClick={() => setFormData({ ...formData, name: event.name, date: event.date })}
+                      className="text-xs bg-indigo-100 text-indigo-700 px-3 py-1 rounded-full hover:bg-indigo-200 transition"
+                    >
+                      {event.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="space-y-3">
+          {events.length === 0 ? (
+            <div className="bg-white rounded-xl p-8 text-center">
+              <Calendar className="w-16 h-16 text-gray-300 mx-auto mb-3" />
+              <p className="text-gray-500">No events added yet. Click + to add your first event!</p>
+            </div>
+          ) : (
+            events.sort((a, b) => new Date(a.date) - new Date(b.date)).map((event) => (
+              <div key={event.id} className="bg-white rounded-xl shadow-md p-5 hover:shadow-lg transition">
+                <div className="flex justify-between items-start">
+                  <div className="flex-1">
+                    <h3 className="font-bold text-lg text-gray-800 mb-1">{event.name}</h3>
+                    <div className="flex items-center gap-4 text-sm text-gray-600">
+                      <div className="flex items-center gap-1">
+                        <Calendar className="w-4 h-4" />
+                        {formatDate(event.date)}
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <Clock className="w-4 h-4" />
+                        {event.time}
+                      </div>
+                    </div>
+                    <div className="mt-2">
+                      <span className="inline-block bg-indigo-100 text-indigo-700 px-3 py-1 rounded-full text-sm font-medium">
+                        {getDaysUntil(event.date, event.time)}
+                      </span>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => deleteEvent(event.id)}
+                    className="text-red-500 hover:bg-red-50 p-2 rounded-lg transition"
+                  >
+                    <Trash2 className="w-5 h-5" />
+                  </button>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+
+        <div className="mt-6 bg-white rounded-xl p-4">
+          <p className="text-xs text-gray-500 text-center">
+            You'll receive notifications 1 week, 2 days, and 1 hour before each event
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
